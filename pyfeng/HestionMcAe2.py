@@ -20,7 +20,7 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
         >>> strike = np.array([60, 100, 140])
         >>> spot = 100
         >>> sigma, vov, mr, rho, texp = 0.04, 1, 0.5, -0.9, 10
-        >>> m = pfex.HestonMcAe2(sigma, vov=vov, mr=mr, rho=rho)
+        >>> m = pfex.HestonMcAe(sigma, vov=vov, mr=mr, rho=rho)
         >>> m.set_mc_params(n_path=1e4, rn_seed=123456)
         >>> m.price(strike, spot, texp)
         >>> # true price: 44.330, 13.085, 0.296
@@ -132,50 +132,51 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
         return result
 # define dfai_ds/fai(first differention)
     def dfai_ds_fai(self,s,texp,var_t):
-        result = (self.I(self.nu-1,self.g(s,texp,var_t))/self.I(self.nu-1,self.g(s,texp,var_t)) - self.nu/self.g(s,texp,var_t)) * dg_ds(s,texp,var_t)-0.5*texp*np.coth(0.5*s*texp)-self.df_ds(s,texp,var_t)
+        result = (self.I(self.nu-1,self.g(s,texp,var_t))/self.I(self.nu-1,self.g(s,texp,var_t)) - self.nu/self.g(s,texp,var_t)) * self.dg_ds(s,texp,var_t)-0.5*texp*np.coth(0.5*s*texp)-self.df_ds(s,texp,var_t)
         return result
 # define d2fai_ds2/fai(second differention)
     def d2fai_ds2_fai(self,s,texp,var_t):
         result_1 = - (self.dI_dz(self.nu,self.g(s,texp,var_t))*self.dg_ds(s,texp,var_t))**2 / self.I(self.nu,self.g(s,texp,var_t))**2
-        result_2 =( d2I_dz2(self.nu,self.g(s,texp,var_t))*self.dg_ds(s,texp,var_t) + self.dI_dz(self.nu,self.g(s,texp,var_t))* self.d2g_ds2(s,texp,var_t) )/self.I(self.nu,self.g(s,texp,var_t))
+        result_2 =( self.d2I_dz2(self.nu,self.g(s,texp,var_t))*self.dg_ds(s,texp,var_t) + self.dI_dz(self.nu,self.g(s,texp,var_t))* self.d2g_ds2(s,texp,var_t) )/self.I(self.nu,self.g(s,texp,var_t))
         result_3 = 0.25*texp**2*(np.csch(0.5*s*texp)**2)
-        result_4 = -d2f_ds2
+        result_4 = -self.d2f_ds2
         result_5 = result_1+result_2+result_3+result_4
         result = result_5 - self.dfai_ds_fai(s,texp)**2       
         return result
 
 #define MGF(-sX):
     def MGF(self,s,texp,var_t):
-        result = fai(self.r(s),texp,var_t)/fai(self.mr,texp,var_t)
+        result = self.fai(self.r(s),texp,var_t)/self.fai(self.mr,texp,var_t)
         return result
 #find M1,M2:
-    def moment_1(self,s,texp,ArithmeticErrorvar_t):
+    def moment_1(self,s,texp,var_t):
         result = self.dr_ds(s)*self.dfai_ds_fai(self.r(s,texp,var_t))*self.MGF(s,texp,var_t)
         return result
     def moment_2(self,s,texp,var_t):
         result = (self.vov**4/self.r(s)**3 )*self.MGF(self.r(s),texp,var_t)*(self.r(s)*self.d2fai_ds2_fai(self.r(s),texp,var_t)-self.dfai_ds_fai(self.r(s),texp,var_t))
         return result
-    #find value
-    def cond_spot_sigma(self, texp):
-            var_t = self.var_t(texp)
-            moment_1 = - moment_1(0,texp,var_t)
-            moment_2 = moment_2(0,texp,var_t)
+#find value
+def cond_spot_sigma(self, texp):
+        var_t = self.var_t(texp)
+        rhoc = np.sqrt(1.0 - self.rho ** 2)
+        m1 = - self.moment_1(0,texp,var_t)
+        m2 = self.moment_2(0,texp,var_t)
 
-            if self.dist == 0:
-                scale_ig = moment_1st ** 3 / (moment_2st - moment_1st ** 2)
-                miu_ig = moment_1st / scale_ig
-                int_var_std = spst.invgauss.rvs(miu_ig, scale=scale_ig) / texp
-            elif self.dist == 1:
-                scale_ln = np.sqrt(np.log(moment_2st) - 2 * np.log(moment_1st))
-                miu_ln = np.log(moment_1st) - 0.5 * scale_ln ** 2
-                int_var_std = np.random.lognormal(miu_ln, scale_ln) / texp
-            else:
-                raise ValueError(f"Incorrect distribution.")
+        if self.dist == 0:
+            scale_ig = m1 ** 3 / (m2 - m1 ** 2)
+            miu_ig = m1 / scale_ig
+            int_var_std = spst.invgauss.rvs(miu_ig, scale=scale_ig) / texp
+        elif self.dist == 1:
+            scale_ln = np.sqrt(np.log(m2) - 2 * np.log(m1))
+            miu_ln = np.log(m1) - 0.5 * scale_ln ** 2
+            int_var_std = np.random.lognormal(miu_ln, scale_ln) / texp
+        else:
+            raise ValueError(f"Incorrect distribution.")
 
-            ### Common Part
-            int_var_dw = ((var_final - var0) - self.mr * texp * (self.theta - int_var_std)) / self.vov
-            spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
-            sigma_cond = rhoc * np.sqrt(int_var_std / var0)  # normalize by initial variance
+        ### Common Part
+        int_var_dw = ((var_t - self.sigma) - self.mr * texp * (self.theta - int_var_std)) / self.vov
+        spot_cond = np.exp(self.rho * (int_var_dw - 0.5 * self.rho * int_var_std * texp))
+        sigma_cond = rhoc * np.sqrt(int_var_std / self.sigma)  # normalize by initial variance
 
-            # return normalized forward and volatility
-            return spot_cond, sigma_cond
+        # return normalized forward and volatility
+        return spot_cond, sigma_cond
