@@ -89,6 +89,7 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
     def r(self,s):
         result = np.sqrt(self.mr ** 2 + 2 * s * self.vov ** 2)
         return result
+
     def dr_ds(self,s):
         result = self.vov**2 / self.r(s)
         return result
@@ -97,61 +98,75 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
     def I(self,nu,z):
         result = spsp.iv(nu,z)
         return result
+
     def dI_dz(self,nu,z):
         result = self.I(nu-1,z)-nu/z*self.I(nu,z)
         return result
+
     def d2I_dz2(self,nu,z):
         result = ( self.I(nu-2,z)+2*self.I(nu,z)+self.I(nu+2,z) ) / 4
         return result
+
 #define subfunctions
     def f(self,s,texp,var_t):
-        result =( ( self.sigma + self.var_t )/ self.vov ** 2 )  * s * ( 1 + np.exp(-s*texp))/( 1 - np.exp(-s*texp))
+        result =( ( self.sigma + var_t )/ self.vov ** 2 )  * s * ( 1 + np.exp(-s*texp))/( 1 - np.exp(-s*texp))
         return result
+
     def g(self,s,texp,var_t):
-        result = 4 * np.sqrt(self.sigma * self.var_t ) * s *  np.exp(-0.5*s*texp)/( 1 - np.exp(-s*texp))
+        print(s, texp)
+        result = 4 * np.sqrt(self.sigma * var_t ) * s * np.exp(-0.5*s*texp)/(1 - np.exp(-s*texp))
         return result
+
     def df_ds(self,s,texp,var_t):
-        result = ((self.sigma + self.var_t )/self.vov ** 2) * (1-2*texp*s*np.exp(-s*texp)-np.exp(-2*s*texp))/(1-np.exp(-s*texp))**2
+        result = ((self.sigma + var_t )/self.vov ** 2) * (1-2*texp*s*np.exp(-s*texp)-np.exp(-2*s*texp))/(1-np.exp(-s*texp))**2
         return result
+
     def dg_ds(self,s,texp,var_t):
         numerator = (1-0.5*s*texp)*np.exp(-0.5*s*texp)-(1+0.5*s*texp)*np.exp(-1.5*s*texp)
         denominator = (1-np.exp(-s*texp))**2
-        result = 4 * np.sqrt(self.sigma * self.var_t) * numerator/ denominator
+        result = 4 * np.sqrt(self.sigma * var_t) * numerator/ denominator
         return result
+
     def d2f_ds2(self,s,texp,var_t):
         result = 4*texp*np.exp(-s*texp) * ((1+0.5*s*texp)*np.exp(-s*texp)-1)/(1-np.exp(-s*texp))**3
-        return result* ((self.sigma + self.var_t )/self.vov ** 2)
+        return result* ((self.sigma + var_t )/self.vov ** 2)
+
     def d2g_ds2(self,s,texp,var_t):
         numerator = (1.25*s*texp**2-3*texp)*np.exp(-0.5*s*texp)+(1.5*s*texp**2+4*texp)*np.exp(-1.5*s*texp)-(0.75*s*texp**2+texp)*np.exp(-2.5*s*texp)
         denominator = (1-np.exp(-s*texp))**3
-        result = 4 * np.sqrt(self.sigma * self.var_t) * numerator/denominator
+        result = 4 * np.sqrt(self.sigma * var_t) * numerator/denominator
         return result
+
 #define subfunctions
     def fai(self,s,texp,var_t):
         result = self.I(self.nu(),self.g(s,texp,var_t))/np.sinh(0.5*s*texp)/np.exp(self.f(s,texp,var_t))
         return result
+
 # define dfai_ds/fai(first differention)
     def dfai_ds_fai(self,s,texp,var_t):
-        result = (self.I(self.nu()-1,self.g(s,texp,var_t))/self.I(self.nu()-1,self.g(s,texp,var_t)) - self.nu()/self.g(s,texp,var_t)) * self.dg_ds(s,texp,var_t)-0.5*texp*np.coth(0.5*s*texp)-self.df_ds(s,texp,var_t)
+        result = (self.I(self.nu()-1,self.g(s,texp,var_t))/self.I(self.nu()-1,self.g(s,texp,var_t)) - self.nu()/self.g(s,texp,var_t)) * self.dg_ds(s,texp,var_t)-0.5*texp/np.tanh(0.5*s*texp)-self.df_ds(s,texp,var_t)
         return result
+
 # define d2fai_ds2/fai(second differention)
     def d2fai_ds2_fai(self,s,texp,var_t):
         result_1 = - (self.dI_dz(self.nu(),self.g(s,texp,var_t))*self.dg_ds(s,texp,var_t))**2 / self.I(self.nu(),self.g(s,texp,var_t))**2
         result_2 =( self.d2I_dz2(self.nu(),self.g(s,texp,var_t))*self.dg_ds(s,texp,var_t) + self.dI_dz(self.nu(),self.g(s,texp,var_t))* self.d2g_ds2(s,texp,var_t) )/self.I(self.nu(),self.g(s,texp,var_t))
-        result_3 = 0.25*texp**2*(np.csch(0.5*s*texp)**2)
-        result_4 = -self.d2f_ds2
+        result_3 = 0.25*texp**2*(1/np.sinh(0.5*s*texp)**2)
+        result_4 = -self.d2f_ds2(s, texp, var_t)
         result_5 = result_1+result_2+result_3+result_4
-        result = result_5 - self.dfai_ds_fai(s,texp)**2       
+        result = result_5 - self.dfai_ds_fai(s, texp, var_t)**2
         return result
 
 #define MGF(-sX):
     def MGF(self,s,texp,var_t):
         result = self.fai(self.r(s),texp,var_t)/self.fai(self.mr,texp,var_t)
         return result
+
 #find M1,M2:
     def moment_1(self,s,texp,var_t):
         result = self.dr_ds(s)*self.dfai_ds_fai(self.r(s),texp,var_t)*self.MGF(s,texp,var_t)
         return result
+
     def moment_2(self,s,texp,var_t):
         result = (self.vov**4/self.r(s)**3 )*self.MGF(self.r(s),texp,var_t)*(self.r(s)*self.d2fai_ds2_fai(self.r(s),texp,var_t)-self.dfai_ds_fai(self.r(s),texp,var_t))
         return result
