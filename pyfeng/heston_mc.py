@@ -182,10 +182,8 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         Returns:
             noncentrality parameter (scalar)
         """
-        chi_lambda = 4 * self.sigma * self.mr / self.vov ** 2
-        chi_lambda /= np.exp(self.mr * texp) + 1
+        chi_lambda = 4 * self.mr * np.exp(-self.mr * texp)/ (self.vov ** 2 *(1 - np.exp(-self.mr * texp))) * self.sigma
         return chi_lambda
-
     def var_final(self, texp):
         """
         Draw final variance from NCX distribution
@@ -258,7 +256,7 @@ class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
         # Get the first 2 moments
         m1 = derivative(mgf_cond, 0, n=1, dx=1e-5)
         m2 = derivative(mgf_cond, 0, n=2, dx=1e-5)
-
+        #print(m1,m2)
         if self.dist == 0:
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
