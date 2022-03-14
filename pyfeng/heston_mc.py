@@ -125,7 +125,7 @@ class HestonMcAndersen2008(sv.SvABC, sv.CondMcBsmABC):
         return spot_cond, sigma_cond
 
 
-class HestonMcAe(sv.SvABC, sv.CondMcBsmABC):
+class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
     """
     Almost exact MC for Heston model.
 
