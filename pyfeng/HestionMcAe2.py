@@ -71,7 +71,7 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
     
 # use for the BesselI function
     def nu(self):
-        nu = 2 * self.sigma * self.mr / self.vov ** 2 -1
+        nu = 0.5 * self.chi_dim() -1
         return nu   
     
 # define  var_t 
