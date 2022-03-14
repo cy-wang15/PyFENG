@@ -3,6 +3,7 @@
 
 # SV models (CMC, AE) from ASP 2021
 from .heston_mc import HestonMcAndersen2008, HestonMcAe, HestonMcExactGK
+from .HestionMcAe2 import HestonMcAe2
 from .sv32_mc import Sv32McCondQE, Sv32McAe
 from .garch import GarchMcCond, GarchUncorrBaroneAdesi2004
 
