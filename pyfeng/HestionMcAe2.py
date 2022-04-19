@@ -27,7 +27,7 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
     """
     dist = 1
 
-    def set_mc_params(self, n_path=10000, rn_seed=None, antithetic=True, dist=0):
+    def set_mc_params(self, n_path=10000, dt = 1/4, rn_seed=None, antithetic=True, dist=0):
         """
         Set MC parameters
         Args:
@@ -42,9 +42,8 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
         self.rn_seed = rn_seed
         self.rng = np.random.default_rng(rn_seed)
         self.dist = dist
+        self.dt = dt
 
-    def vol_paths(self, tobs):
-        return np.ones(size=(len(tobs), self.n_path))
 
 # define NCX variables
     def chi_dim(self):
@@ -56,13 +55,13 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
         result = 4 * self.theta * self.mr / self.vov ** 2
         return result
 
-    def chi_lambda(self, texp):
+    def chi_lambda(self, vol,texp):
         """
         Noncentral Chi-square (NCX) distribution's noncentrality parameter
         Returns:
             noncentrality parameter (scalar)
         """
-        chi_lambda = 4 * self.mr * np.exp(-self.mr * texp)/ (self.vov ** 2 *(1 - np.exp(-self.mr * texp))) * self.sigma
+        chi_lambda = 4 * self.mr * np.exp(-self.mr * texp)/ (self.vov ** 2 *(1 - np.exp(-self.mr * texp))) * vol
         return chi_lambda
     
 # use for the BesselI function
@@ -70,15 +69,7 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
         nu = 0.5 * self.chi_dim() -1
         return nu   
     
-# define  var_t 
-    def var_t(self, texp):
 
-        chi_dim = self.chi_dim()
-        chi_lambda = self.chi_lambda(texp)
-
-        cof = self.vov ** 2 * (1 - np.exp(-self.mr * texp)) / (4 * self.mr)
-        var_t = cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, self.n_path)
-        return var_t
     
 
 #define MGF
@@ -177,13 +168,37 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
         m2 =(d2fai_ur * du_r**2 * dr**2+  dfai_ur * du_r * d2r ) / fai_mr
         return m1,m2
 
+       
+    
+# define  var_t 
+    def var_t(self, vol,texp):
+        chi_dim = self.chi_dim()
+        chi_lambda = self.chi_lambda(vol,texp)
 
+        cof = self.vov ** 2 * (1 - np.exp(-self.mr * texp)) / (4 * self.mr)
+        var_t = cof * np.random.noncentral_chisquare(chi_dim, chi_lambda, self.n_path)
+        return var_t
+    def vol_paths(self, tobs):        
+        return np.ones(size=(len(tobs), self.n_path))
+    
     #find value
     def cond_spot_sigma(self, texp):
-        var_t = self.var_t(texp)
+        var = 0
+        var0 = self.sigma
+        n_dt = int(texp/self.dt)
+        var_paths = list([var0])
+        for i in range(1,n_dt + 1):
+            var = self.var_t(var_paths[i-1],self.dt)
+            var[var<0]=0
+            var_paths.append( var)
+
+        var_final = var_paths[-1]
+        print(n_dt,var_paths[-1])
+        var_t = var_final
+        #var_t = self.var_t(self.sigma,texp)
         rhoc = np.sqrt(1.0 - self.rho ** 2)
         m1 , m2 = self.moment(0, texp, var_t)
-                 
+          
         if self.dist == 0:
             # mu and lambda defined in https://en.wikipedia.org/wiki/Inverse_Gaussian_distribution
             # RNG.wald takes the same parameters
@@ -191,9 +206,18 @@ class HestonMcAe2(sv.SvABC, sv.CondMcBsmABC):
             lam = m1 ** 3 / (m2 - m1 ** 2)
             int_var_std = self.rng.wald(mean=mu, scale=lam) / texp
         elif self.dist == 1:
-            scale_ln = np.sqrt(np.log(m2) - 2 * np.log(m1))
-            miu_ln = np.log(m1) - 0.5 * scale_ln ** 2
+            scale_ln = np.sqrt(np.log(m2/m1**2))            
+            miu_ln = 0.5*np.log(m1**4/m2)
             int_var_std = self.rng.lognormal(mean=miu_ln, sigma=scale_ln) / texp
+        elif self.dist == 2:
+            #gamma_alpha = m1**2/(m2-m1**2)
+            gamma_theta = m2/m1-m1
+            gamma_alpha = m1/gamma_theta
+            int_var_std = self.rng.gamma(shape = gamma_alpha, scale = gamma_theta)/texp
+        elif self.dist == 3:
+            a = np.sqrt((m2-m1**2)/2)+m1
+            b = m1 - a
+            int_var_std =(self.rng.normal()**2*b+a)/texp
         else:
             raise ValueError(f"Incorrect distribution.")
 
